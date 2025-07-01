@@ -1,63 +1,71 @@
-const axios = require('axios');
-
 module.exports.config = {
-  name: 'ai',
-  version: '1.0.0',
-  hasPermission: 0,
-  usePrefix: false,
-  aliases: ['gpt', 'openai'],
-  description: "An AI command powered by GPT-4",
-  usages: "ai [prompt]",
-  credits: 'Developer',
+  name: "ai",
+  version: "1.2.6",
+  permission: 0,
+  credits: "Bogart Magalpok",
+  description: "Ask AI with or without an image using Kaiz Gemini Vision API.",
+  prefix: false,
+  premium: false,
+  category: "without prefix",
+  usage: "ai <question> | reply to image with or without a question",
   cooldowns: 3,
-  dependencies: {
+  dependency: {
     "axios": ""
   }
 };
 
-module.exports.run = async function({ api, event, args }) {
-  const input = args.join(' ');
+module.exports.run = async function ({ api, event, args }) {
+  const axios = require("axios");
+  const { threadID, messageID, messageReply } = event;
 
-  if (!input) {
-    return api.sendMessage(`Please provide a question or statement after 'ai'. For example: 'ai What is the capital of France?'`, event.threadID, event.messageID);
-  }
-
-  if (input === "clear") {
-    try {
-      await axios.post('https://gaypt4ai.onrender.com/clear', { id: event.senderID });
-      return api.sendMessage("Chat history has been cleared.", event.threadID, event.messageID);
-    } catch (error) {
-      console.error(error);
-      return api.sendMessage('An error occurred while clearing the chat history.', event.threadID, event.messageID);
-    }
-  }
-
-
-  let chatInfoMessageID = "";
-  
-  api.sendMessage(`🔍 "${input}"`, event.threadID, (error, chatInfo) => {
-    chatInfoMessageID = chatInfo.messageID;
-  },event.messageID);
+  const API_ENDPOINT = "https://kaiz-apis.gleeze.com/api/gemini-vision";
+  const API_KEY = ""; // Your own Kaiz Api
+  const UID = Math.floor(Math.random() * 1000000).toString(); // Random UID
 
   try {
-    const url = (event.type === "message_reply" && event.messageReply.attachments[0]?.type === "photo")
-      ? { link: event.messageReply.attachments[0].url }
-      : {};
+    const question = args.join(" ");
+    let imageUrl = null;
 
-    const { data } = await axios.post('https://gays-porno-api.onrender.com/chat', {
-      prompt: input,
-      customId: event.senderID,
-      ...url
-    });
-
-    api.editMessage(`${data.message}`, chatInfoMessageID, (err) => {
-      if (err) {
-        console.error(err);
+    if (messageReply && messageReply.attachments.length > 0) {
+      const attachment = messageReply.attachments[0];
+      if (attachment.type === "photo" && attachment.url) {
+        imageUrl = attachment.url;
+      } else {
+        return api.sendMessage("❌ Please reply to a valid photo.", threadID, messageID);
       }
+    }
+
+    if (!question && !imageUrl) {
+      return api.sendMessage(
+        "🧠 Homer AI Bot\n\n❌ Please provide a question or reply to an image.",
+        threadID,
+        messageID
+      );
+    }
+
+    const queryParams = new URLSearchParams({
+      q: question || "",
+      uid: UID,
+      imageUrl: imageUrl || "",
+      apikey: API_KEY
     });
+
+    const fullUrl = `${API_ENDPOINT}?${queryParams.toString()}`;
+    const res = await axios.get(fullUrl);
+    const result = res?.data?.response;
+
+    if (!result) {
+      return api.sendMessage("⚠️ No response received from the AI API.", threadID, messageID);
+    }
+
+    return api.sendMessage(
+      `•| 𝙷𝙾𝙼𝙴𝚁 𝙰𝙸 𝙱𝙾𝚃 |•\n\n${result}\n\n•| 𝙾𝚆𝙽𝙴𝚁 : 𝙷𝙾𝙼𝙴𝚁 𝚁𝙴𝙱𝙰𝚃𝙸𝚂 |•`,
+      threadID,
+      messageID
+    );
 
   } catch (error) {
-    console.error(error);
-    return api.sendMessage('An error occurred while processing your request.', event.threadID, event.messageID);
+    console.error("❌ AI Error:", error?.response?.data || error.message || error);
+    return api.sendMessage("❌ An error occurred while processing your request. Please try again later.", threadID, messageID);
   }
 };
